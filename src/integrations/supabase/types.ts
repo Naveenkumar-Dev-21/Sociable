@@ -277,6 +277,57 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          id: string
+          type: string
+          from_user_id: string
+          to_user_id: string
+          message: string | null
+          is_read: boolean
+          created_at: string
+          related_post_id: string | null
+          related_conversation_id: string | null
+        }
+        Insert: {
+          id?: string
+          type: string
+          from_user_id: string
+          to_user_id: string
+          message?: string | null
+          is_read?: boolean
+          created_at?: string
+          related_post_id?: string | null
+          related_conversation_id?: string | null
+        }
+        Update: {
+          id?: string
+          type?: string
+          from_user_id?: string
+          to_user_id?: string
+          message?: string | null
+          is_read?: boolean
+          created_at?: string
+          related_post_id?: string | null
+          related_conversation_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_from_user_id_fkey"
+            columns: ["from_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_to_user_id_fkey"
+            columns: ["to_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

@@ -137,11 +137,40 @@ const Profile = () => {
         setIsFollowing(false);
         setFollowersCount((prev) => prev - 1);
       } else {
-        await supabase
-          .from("follows")
-          .insert({ follower_id: user.id, following_id: profile.id });
-        setIsFollowing(true);
-        setFollowersCount((prev) => prev + 1);
+        // Check if the profile is private
+        if (profile.is_private) {
+          // For private accounts, send a follow request notification
+          await supabase
+            .from("notifications")
+            .insert({
+              type: "follow_request",
+              from_user_id: user.id,
+              to_user_id: profile.id,
+              message: `${user.user_metadata?.full_name || user.email} wants to follow you`
+            });
+
+          toast({
+            title: "Follow request sent",
+            description: "Your follow request has been sent to the user for approval",
+          });
+        } else {
+          // For public accounts, follow immediately
+          await supabase
+            .from("follows")
+            .insert({ follower_id: user.id, following_id: profile.id });
+          setIsFollowing(true);
+          setFollowersCount((prev) => prev + 1);
+
+          // Send notification for public follow
+          await supabase
+            .from("notifications")
+            .insert({
+              type: "follow_accepted",
+              from_user_id: user.id,
+              to_user_id: profile.id,
+              message: `${user.user_metadata?.full_name || user.email} started following you`
+            });
+        }
       }
     } catch (error: any) {
       toast({

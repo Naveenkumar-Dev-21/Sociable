@@ -257,9 +257,24 @@ CREATE TABLE public.messages (
   is_read BOOLEAN DEFAULT false NOT NULL
 );
 
+-- Create notifications table
+CREATE TABLE public.notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type TEXT NOT NULL CHECK (type IN ('follow_request', 'follow_accepted', 'follow_rejected', 'new_message', 'like', 'comment')),
+  from_user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  to_user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  message TEXT,
+  is_read BOOLEAN DEFAULT false NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+  related_post_id UUID REFERENCES public.posts(id) ON DELETE CASCADE,
+  related_conversation_id UUID REFERENCES public.conversations(id) ON DELETE CASCADE,
+  UNIQUE(from_user_id, to_user_id, type, related_post_id, related_conversation_id)
+);
+
 -- Enable Row Level Security for messaging
 ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 -- Conversations policies
 CREATE POLICY "Users can view their own conversations"
@@ -302,6 +317,23 @@ CREATE POLICY "Users can update their own messages"
   ON public.messages FOR UPDATE
   USING (auth.uid() = sender_id);
 
+-- Notifications policies
+CREATE POLICY "Users can view notifications sent to them"
+  ON public.notifications FOR SELECT
+  USING (auth.uid() = to_user_id);
+
+CREATE POLICY "Users can create notifications"
+  ON public.notifications FOR INSERT
+  WITH CHECK (auth.uid() = from_user_id);
+
+CREATE POLICY "Users can update their own notifications"
+  ON public.notifications FOR UPDATE
+  USING (auth.uid() = to_user_id);
+
+CREATE POLICY "Users can delete their own notifications"
+  ON public.notifications FOR DELETE
+  USING (auth.uid() = to_user_id);
+
 -- Function to get or create conversation
 CREATE OR REPLACE FUNCTION public.get_or_create_conversation(other_user_id UUID)
 RETURNS UUID
@@ -336,6 +368,9 @@ $$;
 -- Enable realtime for messaging
 ALTER PUBLICATION supabase_realtime ADD TABLE public.conversations;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
+
+-- Enable realtime for notifications
+ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
 
 -- Enable realtime for posts
 ALTER PUBLICATION supabase_realtime ADD TABLE public.posts;

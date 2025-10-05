@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Camera, Home, User, LogOut, Menu, Search, MessageCircle } from "lucide-react";
+import { Camera, Home, User, LogOut, Menu, Search, MessageCircle, Bell } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
 
 interface NavigationProps {
   user: any;
@@ -21,17 +22,49 @@ const Navigation = ({ user }: NavigationProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [profile, setProfile] = useState<any>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  useState(() => {
+  useEffect(() => {
     if (user) {
+      // Fetch user profile
       supabase
         .from("profiles")
         .select("*")
         .eq("id", user.id)
         .single()
         .then(({ data }) => setProfile(data));
+
+      // Fetch unread notifications count
+      const fetchUnreadCount = async () => {
+        const { count } = await supabase
+          .from('notifications')
+          .select('*', { count: 'exact', head: true })
+          .eq('to_user_id', user.id)
+          .eq('is_read', false);
+
+        setUnreadCount(count || 0);
+      };
+
+      fetchUnreadCount();
+
+      // Subscribe to notifications changes
+      const channel = supabase
+        .channel('notifications-count')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'notifications',
+            filter: `to_user_id=eq.${user.id}`,
+          },
+          () => {
+            fetchUnreadCount();
+          }
+        )
+        .subscribe();
     }
-  });
+  }, [user]);
 
   const handleSignOut = async () => {
     try {
@@ -68,6 +101,18 @@ const Navigation = ({ user }: NavigationProps) => {
 
             <Button variant="ghost" size="icon" onClick={() => navigate("/search")}>
               <Search className="w-5 h-5" />
+            </Button>
+
+            <Button variant="ghost" size="icon" onClick={() => navigate("/notifications")} className="relative">
+              <Bell className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="absolute -top-1 -right-1 w-5 h-5 p-0 flex items-center justify-center text-xs"
+                >
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Badge>
+              )}
             </Button>
 
             <Button variant="ghost" size="icon" onClick={() => navigate("/messages")}>
