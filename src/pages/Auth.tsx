@@ -19,14 +19,114 @@ const Auth = () => {
   const [fullName, setFullName] = useState("");
 
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        navigate("/feed");
+    const handleAuthCallback = async () => {
+      try {
+        // Check if this is an OAuth callback (has code in URL)
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const errorParam = urlParams.get('error');
+        const errorDescription = urlParams.get('error_description');
+
+        console.log("Auth callback triggered", { code: !!code, errorParam, errorDescription });
+
+        // Handle OAuth errors
+        if (errorParam) {
+          console.error("OAuth error:", errorParam, errorDescription);
+          toast({
+            title: "Authentication Error",
+            description: errorDescription || "Authentication failed",
+            variant: "destructive",
+          });
+          // Clean up URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+          return;
+        }
+
+        if (code) {
+          console.log("Handling OAuth callback with code:", code);
+
+          try {
+            // Handle the OAuth callback
+            const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+            if (error) {
+              console.error("Error exchanging code for session:", error);
+              toast({
+                title: "Authentication Error",
+                description: error.message,
+                variant: "destructive",
+              });
+              // Clean up URL
+              window.history.replaceState({}, document.title, window.location.pathname);
+              return;
+            }
+
+            if (data.session) {
+              console.log("Successfully authenticated, redirecting to feed");
+              toast({
+                title: "Welcome!",
+                description: "You've successfully signed in",
+              });
+              // Clean up URL and redirect
+              window.history.replaceState({}, document.title, "/");
+              navigate("/feed");
+              return;
+            } else if (data.user && !data.session) {
+              console.log("User exists but no session, creating session");
+              // Try to get the session again
+              const { data: sessionData } = await supabase.auth.getSession();
+              if (sessionData.session) {
+                navigate("/feed");
+                return;
+              }
+            }
+
+            console.log("No session after OAuth callback, data:", data);
+
+            // Fallback: try to get session after a short delay
+            if (data.user && !data.session) {
+              console.log("User exists but no session, waiting and retrying...");
+              setTimeout(async () => {
+                const { data: retryData } = await supabase.auth.getSession();
+                if (retryData.session) {
+                  console.log("Session found on retry, redirecting to feed");
+                  navigate("/feed");
+                } else {
+                  console.log("Still no session, redirecting anyway for OAuth users");
+                  // For OAuth users, redirect even without session
+                  navigate("/feed");
+                }
+              }, 1000);
+              return;
+            }
+          } catch (exchangeError: any) {
+            console.error("Exception during code exchange:", exchangeError);
+            toast({
+              title: "Authentication Error",
+              description: "Failed to complete authentication",
+              variant: "destructive",
+            });
+          }
+        }
+
+        // Check for existing session
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          console.log("Existing session found, redirecting to feed");
+          navigate("/feed");
+        }
+      } catch (error: any) {
+        console.error("Auth callback error:", error);
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
       }
     };
-    checkUser();
-  }, [navigate]);
+
+    handleAuthCallback();
+  }, [navigate, toast]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,15 +209,30 @@ const Auth = () => {
 
   const handleGoogleSignIn = async () => {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      console.log("Starting Google OAuth with redirect to:", `${window.location.origin}/`);
+      console.log("Current origin:", window.location.origin);
+      console.log("Supabase URL:", import.meta.env.VITE_SUPABASE_URL);
+      console.log("Supabase Key:", import.meta.env.VITE_SUPABASE_ANON_KEY ? "Present" : "Missing");
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth`,
+          redirectTo: `${window.location.origin}/`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          }
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Google OAuth error:", error);
+        throw error;
+      }
+
+      console.log("Google OAuth initiated successfully", data);
     } catch (error: any) {
+      console.error("Google sign-in error:", error);
       toast({
         title: "Error",
         description: error.message,
